@@ -2,11 +2,14 @@
 ---
 - name: run dynamic site from nginx back
   hosts: ngserver
+  vars:
+    service_port: 8000
   tasks:
     - name: update the apt all sources to mirrors in china
       sudo: True
       copy: src=files/sources.list.1404 dest=/etc/apt/sources.list
       when: ansible_distribution == "Ubuntu"
+
 
     - name: install nginx through apt
       apt:  pkg={{item}} update_cache=yes state=present cache_valid_time=3600
@@ -15,13 +18,52 @@
         - nginx
         - python-dev
         - python-setuptools
+        - git
 
     - name: install required pip for furture python packages installations
       easy_install: name=pip
       sudo: True
+      async: 60
+      poll: 30
+      ignore_errors: True
+      register: eiresult
+
+    - debug: var=eiresult
+
+    - name: if easy_install failed, using shell and using douban mirror
+      shell: easy_install -f http://pypi.douban.com/simple/pip pip
+      sudo: True
+      when: eiresult.failed is defined and eiresult.failed == 1
 
     - name: install django through pip
       pip: name={{item}} extra_args='-i http://pypi.douban.com/simple --trusted-host pypi.douban.com'
       sudo: True
       with_items:
         - django
+        - gunicorn
+
+    - name: remove the default config for ngnix
+      file:
+        state: absent
+        path: /etc/nginx/sites-enabled/default
+      sudo: True
+
+    - name: using the polls site nginx conf file
+      sudo: True
+      template:
+        src: templates/nginx.conf.j2
+        dest: /etc/nginx/sites-available/polls.conf
+      notify: restart nginx
+
+    - name: enable the nginx config file
+      sudo: True
+      file:
+        src: /etc/nginx/sites-available/polls.conf
+        dest: /etc/nginx/sites-enabled/polls.conf
+        state: link
+      notify: restart nginx
+
+  handlers:
+    - name: restart nginx
+      sudo: True
+      service: name=nginx state=restarted
