@@ -1,0 +1,27 @@
+#!/usr/bin/env ansible-playbook
+---
+- name: run dynamic site from nginx back
+  hosts: ngserver
+  tasks:
+    - name: update the apt all sources to mirrors in china
+      sudo: True
+      copy: src=files/sources.list.1404 dest=/etc/apt/sources.list
+      when: ansible_distribution == "Ubuntu"
+
+    - name: install nginx through apt
+      apt:  pkg={{item}} update_cache=yes state=present cache_valid_time=3600
+      sudo: True
+      with_items:
+        - nginx
+        - python-dev
+        - python-setuptools
+
+    - name: install required pip for furture python packages installations
+      easy_install: name=pip
+      sudo: True
+
+    - name: install django through pip
+      pip: name={{item}} extra_args='-i http://pypi.douban.com/simple --trusted-host pypi.douban.com'
+      sudo: True
+      with_items:
+        - django
